@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mr. Tallow — Order Monitor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bitter:wght@600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-database-compat.js"></script>
+<style>
+  :root {
+    --char: #1C1815;
+    --char-raised: #262019;
+    --char-line: #3A3128;
+    --cream: #F4EEDD;
+    --cream-dim: #C9C1AC;
+    --tallow: #E8A93D;
+    --tallow-dim: #8A6B2C;
+    --paprika: #C43D2B;
+    --herb: #6B9161;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; height: 100%;
+    background: var(--char);
+    color: var(--cream);
+    font-family: 'Inter', sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  button { font-family: inherit; cursor: pointer; }
+
+  .new-order-banner {
+    position: sticky; top: 0; z-index: 300;
+    background: linear-gradient(90deg, #C43D2B, #A8402A);
+    color: #fff;
+    padding: 18px 24px;
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    box-shadow: 0 4px 18px rgba(0,0,0,0.5);
+    animation: bannerPulse 1.4s ease-in-out infinite;
+  }
+  @keyframes bannerPulse {
+    0%, 100% { filter: brightness(1); }
+    50% { filter: brightness(1.18); }
+  }
+  .banner-text { font-family: 'Bitter', serif; font-weight: 700; font-size: 21px; }
+  .banner-actions { display: flex; gap: 10px; flex-shrink: 0; }
+  .banner-dismiss-btn {
+    background: rgba(255,255,255,0.15); color: #fff; border: 1px solid rgba(255,255,255,0.4);
+    border-radius: 8px; padding: 11px 16px; font-size: 15px; font-weight: 700;
+  }
+
+  .queue-header {
+    padding: 22px 24px 16px;
+    display: flex; justify-content: space-between; align-items: center;
+    border-bottom: 1px solid var(--char-line);
+    max-width: 980px; margin: 0 auto; width: 100%;
+  }
+  .queue-header h1 { font-family: 'Bitter', serif; margin: 0; font-size: 26px; color: var(--tallow); }
+  .sync-status { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--herb); margin-top: 4px; }
+
+  .menu-panel-btn {
+    background: var(--char-raised); border: 1px solid var(--tallow-dim); color: var(--tallow);
+    border-radius: 8px; padding: 10px 16px; font-size: 13px; font-weight: 600; font-family: 'Inter', sans-serif;
+  }
+  .menu-panel {
+    max-width: 980px; margin: 14px auto 0; padding: 0 24px;
+  }
+  .menu-panel-sub { font-size: 13px; color: var(--cream-dim); margin: 0 0 12px; }
+  .menu-panel-row {
+    display: flex; justify-content: space-between; align-items: center;
+    background: var(--char-raised); border: 1px solid var(--char-line); border-radius: 10px;
+    padding: 12px 16px; margin-bottom: 8px;
+  }
+  .menu-panel-row.out { border-color: var(--paprika); opacity: 0.85; }
+  .menu-panel-name { font-size: 15px; font-weight: 600; }
+  .menu-panel-toggle {
+    background: var(--char); border: 1px solid var(--paprika); color: var(--paprika);
+    border-radius: 8px; padding: 8px 14px; font-size: 12.5px; font-weight: 700;
+  }
+  .menu-panel-toggle.restock { border-color: var(--herb); color: var(--herb); }
+  .clear-completed-row { padding: 14px 24px 0; max-width: 980px; margin: 0 auto; width: 100%; }
+  .clear-completed-btn {
+    width: 100%; background: var(--char-raised); border: 1px solid var(--paprika); color: var(--paprika);
+    border-radius: 10px; padding: 12px 0; font-size: 14px; font-weight: 600; font-family: 'Inter', sans-serif;
+  }
+
+  .queue-list { max-width: 980px; margin: 0 auto; width: 100%; padding: 18px 24px 60px; }
+  .queue-ticket {
+    background: var(--char-raised); border: 1px solid var(--char-line); border-left: 4px solid var(--tallow);
+    border-radius: 12px; padding: 18px; margin-bottom: 14px;
+  }
+  .queue-ticket.done { border-left-color: var(--herb); opacity: 0.7; }
+  .queue-ticket-top { display: flex; justify-content: space-between; align-items: center; }
+  .queue-ticket-num { font-family: 'IBM Plex Mono', monospace; color: var(--paprika); font-size: 13px; }
+  .status-badge {
+    font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 600;
+    letter-spacing: 0.06em; text-transform: uppercase; padding: 3px 10px; border-radius: 20px;
+    background: var(--tallow); color: var(--char);
+  }
+  .status-badge.done { background: var(--herb); color: #fff; }
+  .queue-ticket-name { font-family: 'Bitter', serif; font-weight: 700; font-size: 19px; margin-top: 4px; }
+  .queue-ticket-seat { font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 700; color: var(--paprika); }
+  .queue-ticket-pay-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    margin-top: 6px; flex-wrap: wrap;
+  }
+  .queue-ticket-pay {
+    display: inline-block; font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+    font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
+    color: var(--tallow); background: rgba(232, 169, 61, 0.12);
+    border: 1px solid var(--tallow-dim); border-radius: 6px; padding: 2px 9px; margin-top: 0;
+  }
+  .paid-checkbox-label {
+    display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600;
+    color: var(--herb); cursor: pointer; font-family: 'Inter', sans-serif;
+  }
+  .paid-checkbox-label.unpaid { color: var(--paprika); }
+  .paid-checkbox { width: 16px; height: 16px; accent-color: var(--herb); cursor: pointer; }
+  .queue-ticket-items { font-size: 14px; color: var(--cream-dim); margin-top: 10px; line-height: 1.6; }
+  .queue-ticket-breakdown { font-size: 12px; color: var(--tallow-dim); margin-top: 8px; font-family: 'IBM Plex Mono', monospace; }
+  .queue-ticket-note-row {
+    display: flex; gap: 8px; margin-top: 12px;
+  }
+  .note-input {
+    flex: 1; background: var(--char); border: 1px solid var(--char-line); color: var(--cream);
+    border-radius: 8px; padding: 9px 12px; font-size: 13px; font-family: 'Inter', sans-serif;
+  }
+  .note-input::placeholder { color: #5A5045; }
+  .note-save-btn {
+    background: var(--char); border: 1px solid var(--tallow-dim); color: var(--tallow);
+    border-radius: 8px; padding: 9px 14px; font-size: 12.5px; font-weight: 700; font-family: 'Inter', sans-serif;
+  }
+  .queue-ticket-bottom { display: flex; justify-content: space-between; align-items: center; margin-top: 14px; }
+  .queue-total { font-family: 'IBM Plex Mono', monospace; font-weight: 700; font-size: 17px; color: var(--tallow); }
+  .queue-ticket-btns { display: flex; gap: 10px; }
+  .done-btn {
+    background: none; border: 1px solid var(--herb); color: var(--herb);
+    border-radius: 8px; padding: 8px 14px; font-size: 13px; font-weight: 600;
+  }
+  .queue-ticket.done .done-btn { border-color: var(--cream-dim); color: var(--cream-dim); }
+  .delete-btn {
+    background: none; border: 1px solid var(--paprika); color: var(--paprika);
+    border-radius: 8px; padding: 8px 14px; font-size: 13px; font-weight: 600;
+  }
+  .queue-empty { text-align: center; color: var(--cream-dim); font-size: 15px; padding: 80px 20px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyA1twUJqU0EH84yF6VPYyOmotTGuRugjNk",
+  authDomain: "mr-tallow.firebaseapp.com",
+  databaseURL: "https://mr-tallow-default-rtdb.firebaseio.com",
+  projectId: "mr-tallow",
+  storageBucket: "mr-tallow.firebasestorage.app",
+  messagingSenderId: "264467639866",
+  appId: "1:264467639866:web:db3dbd7fcd278a2e614f03"
+};
+let db = null;
+let firebaseReady = false;
+try {
+  firebase.initializeApp(firebaseConfig);
+  db = firebase.database();
+  firebaseReady = true;
+} catch (e) {
+  console.error("Firebase failed to initialize.", e);
+}
+
+const PAYMENT_METHODS = {
+  cash:   { label: "Cash" },
+  square: { label: "Square (Credit Card)" },
+  venmo:  { label: "Venmo" },
+  cashapp:{ label: "Cash App" },
+  zelle:  { label: "Zelle" }
+};
+
+function fmt(n) { return "$" + (n || 0).toFixed(2); }
+function escapeHtml(str) {
+  return String(str).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+const MENU = {
+  burgers: [
+    { id: "single", name: "Smash Burger — Single" },
+    { id: "double", name: "Smash Burger — Double" }
+  ],
+  tacos: [
+    { id: "taco-pork", name: "Taco — Pork" },
+    { id: "taco-chicken", name: "Taco — Chicken" }
+  ],
+  quesadillas: [
+    { id: "quesa-cheese", name: "Cheese Quesadilla" },
+    { id: "quesa-meat", name: "Chicken or Pork Quesadilla" }
+  ],
+  sides: [
+    { id: "fries", name: "French Fries" },
+    { id: "okra", name: "Fried Okra" },
+    { id: "curly", name: "Curly Fries" }
+  ]
+};
+const ALL_MENU_ITEMS = [
+  ...MENU.burgers, ...MENU.tacos, ...MENU.quesadillas, ...MENU.sides
+];
+
+let state = {
+  queue: [],
+  newOrderAlert: null,
+  eighty6: new Set(),
+  showMenuPanel: false
+};
+
+let hasLoadedOrdersOnce = false;
+let knownOrderIds = new Set();
+
+function listenToEighty6() {
+  if (!db) return;
+  db.ref("eighty6").on("value", (snapshot) => {
+    const val = snapshot.val() || {};
+    state.eighty6 = new Set(Object.keys(val).filter(k => val[k]));
+    render();
+  }, (err) => {
+    console.error("Firebase read failed (86 list):", err);
+  });
+}
+function toggleEighty6(itemId) {
+  if (!(firebaseReady && db)) return;
+  const isOut = state.eighty6.has(itemId);
+  if (isOut) {
+    db.ref("eighty6/" + itemId).remove().catch(err => console.error("86 toggle failed:", err));
+  } else {
+    db.ref("eighty6/" + itemId).set(true).catch(err => console.error("86 toggle failed:", err));
+  }
+}
+function toggleMenuPanel() {
+  state.showMenuPanel = !state.showMenuPanel;
+  render();
+}
+
+function listenToOrders() {
+  if (!db) { render(); return; }
+  db.ref("orders").on("value", (snapshot) => {
+    const val = snapshot.val() || {};
+    const entries = Object.keys(val)
+      .map(key => ({ id: key, ...val[key] }))
+      .sort((a, b) => (b.num || 0) - (a.num || 0));
+
+    if (hasLoadedOrdersOnce) {
+      const newOnes = entries.filter(e => !knownOrderIds.has(e.id));
+      if (newOnes.length > 0) {
+        const latest = newOnes.reduce((a, b) => ((a.num || 0) > (b.num || 0) ? a : b));
+        state.newOrderAlert = { num: latest.num, name: latest.name, total: latest.total };
+      }
+    }
+    knownOrderIds = new Set(entries.map(e => e.id));
+    hasLoadedOrdersOnce = true;
+
+    state.queue = entries;
+    render();
+  }, (err) => {
+    console.error("Firebase read failed:", err);
+  });
+}
+
+function toggleQueueDone(id) {
+  if (!(firebaseReady && db)) return;
+  const t = state.queue.find(t => t.id === id);
+  if (!t) return;
+  db.ref("orders/" + id + "/done").set(!t.done).catch(err => console.error("Update failed:", err));
+}
+function togglePaymentCollected(id) {
+  if (!(firebaseReady && db)) return;
+  const t = state.queue.find(t => t.id === id);
+  if (!t) return;
+  db.ref("orders/" + id + "/paymentCollected").set(!t.paymentCollected).catch(err => console.error("Update failed:", err));
+}
+function saveNote(id, text) {
+  if (!(firebaseReady && db)) return;
+  db.ref("orders/" + id + "/note").set(text || null).catch(err => console.error("Note save failed:", err));
+}
+function deleteQueueTicket(id) {
+  if (!(firebaseReady && db)) return;
+  db.ref("orders/" + id).remove().catch(err => console.error("Delete failed:", err));
+}
+function clearCompletedOrders() {
+  const doneTickets = state.queue.filter(t => t.done);
+  if (doneTickets.length === 0 || !(firebaseReady && db)) return;
+  const updates = {};
+  doneTickets.forEach(t => { updates["orders/" + t.id] = null; });
+  db.ref().update(updates).catch(err => console.error("Clear completed failed:", err));
+}
+function dismissBanner() {
+  state.newOrderAlert = null;
+  render();
+}
+
+function render() {
+  const root = document.getElementById("root");
+  const a = state.newOrderAlert;
+
+  root.innerHTML = `
+    ${a ? `
+    <div class="new-order-banner" id="new-order-banner">
+      <span class="banner-text">🔔 New Order — #${String(a.num).padStart(3, "0")} · ${escapeHtml(a.name)} · ${fmt(a.total)}</span>
+      <div class="banner-actions">
+        <button class="banner-dismiss-btn" id="banner-dismiss-btn">Dismiss</button>
+      </div>
+    </div>` : ""}
+
+    <div class="queue-header">
+      <div>
+        <h1>Mr. Tallow — Orders</h1>
+        <div class="sync-status">${firebaseReady ? "● synced live" : "● not connected"}</div>
+      </div>
+      <button class="menu-panel-btn" id="menu-panel-btn">${state.showMenuPanel ? "Hide Menu" : "Menu Availability"}</button>
+    </div>
+
+    ${state.showMenuPanel ? `
+    <div class="menu-panel">
+      <p class="menu-panel-sub">Mark an item sold out — it'll disappear from ordering until you flip it back.</p>
+      ${ALL_MENU_ITEMS.map(item => {
+        const soldOut = state.eighty6.has(item.id);
+        return `
+          <div class="menu-panel-row ${soldOut ? 'out' : ''}">
+            <span class="menu-panel-name">${escapeHtml(item.name)}</span>
+            <button class="menu-panel-toggle ${soldOut ? 'restock' : ''}" data-menu-toggle="${item.id}">${soldOut ? "Mark Available" : "86 It"}</button>
+          </div>
+        `;
+      }).join("")}
+    </div>` : ""}
+
+    ${state.queue.some(t => t.done) ? `
+    <div class="clear-completed-row">
+      <button class="clear-completed-btn" id="clear-completed-btn">Clear completed (${state.queue.filter(t => t.done).length})</button>
+    </div>` : ""}
+
+    <div class="queue-list">
+      ${state.queue.length === 0 ? `<div class="queue-empty">No orders yet today.</div>` :
+        state.queue.map(t => `
+          <div class="queue-ticket ${t.done ? 'done' : ''}">
+            <div class="queue-ticket-top">
+              <span class="queue-ticket-num">#${String(t.num).padStart(3, "0")} · ${t.time || ""}</span>
+              <span class="status-badge ${t.done ? 'done' : ''}">${t.done ? "Done" : "Pending"}</span>
+            </div>
+            <div class="queue-ticket-name">${escapeHtml(t.name || "Guest")}${t.seat ? ` <span class="queue-ticket-seat">📍 ${escapeHtml(t.seat)}</span>` : ""}</div>
+            <div class="queue-ticket-pay-row">
+              <div class="queue-ticket-pay">${escapeHtml((PAYMENT_METHODS[t.paymentMethod] || {}).label || t.paymentMethod || "—")}</div>
+              <label class="paid-checkbox-label ${t.paymentCollected ? '' : 'unpaid'}">
+                <input type="checkbox" class="paid-checkbox" data-paid-id="${t.id}" ${t.paymentCollected ? "checked" : ""} />
+                Payment collected
+              </label>
+            </div>
+            <div class="queue-ticket-items">
+              ${(t.items || []).map(it => `${it.qty > 1 ? it.qty + "× " : ""}${escapeHtml(it.name)}${it.modsText ? " (" + escapeHtml(it.modsText) + ")" : ""}`).join("<br>")}
+            </div>
+            ${(t.tip > 0 || t.fee > 0) ? `
+              <div class="queue-ticket-breakdown">
+                ${t.subtotal ? `Subtotal ${fmt(t.subtotal)}` : ""}${t.tip > 0 ? ` · Tip ${fmt(t.tip)}` : ""}${t.fee > 0 ? ` · Card fee ${fmt(t.fee)}` : ""}
+              </div>
+            ` : ""}
+            <div class="queue-ticket-note-row">
+              <input type="text" class="note-input" data-note-id="${t.id}" placeholder="Add a note…" value="${escapeHtml(t.note || "")}" />
+              <button class="note-save-btn" data-note-save="${t.id}">Save</button>
+            </div>
+            <div class="queue-ticket-bottom">
+              <span class="queue-total">${fmt(t.total)}</span>
+              <div class="queue-ticket-btns">
+                <button class="done-btn" data-id="${t.id}">${t.done ? "Mark pending" : "Mark done"}</button>
+                <button class="delete-btn" data-id="${t.id}">Delete</button>
+              </div>
+            </div>
+          </div>
+        `).join("")
+      }
+    </div>
+  `;
+
+  const dismissBtn = document.getElementById("banner-dismiss-btn");
+  if (dismissBtn) dismissBtn.addEventListener("click", dismissBanner);
+  const clearBtn = document.getElementById("clear-completed-btn");
+  if (clearBtn) clearBtn.addEventListener("click", clearCompletedOrders);
+  const menuBtn = document.getElementById("menu-panel-btn");
+  if (menuBtn) menuBtn.addEventListener("click", toggleMenuPanel);
+  root.querySelectorAll("[data-menu-toggle]").forEach(btn => {
+    btn.addEventListener("click", () => toggleEighty6(btn.dataset.menuToggle));
+  });
+  root.querySelectorAll(".done-btn").forEach(btn => {
+    btn.addEventListener("click", () => toggleQueueDone(btn.dataset.id));
+  });
+  root.querySelectorAll(".delete-btn").forEach(btn => {
+    btn.addEventListener("click", () => deleteQueueTicket(btn.dataset.id));
+  });
+  root.querySelectorAll(".paid-checkbox").forEach(cb => {
+    cb.addEventListener("change", () => togglePaymentCollected(cb.dataset.paidId));
+  });
+  root.querySelectorAll(".note-save-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const input = root.querySelector(`.note-input[data-note-id="${btn.dataset.noteSave}"]`);
+      if (input) saveNote(btn.dataset.noteSave, input.value.trim());
+    });
+  });
+  root.querySelectorAll(".note-input").forEach(input => {
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        saveNote(input.dataset.noteId, input.value.trim());
+        input.blur();
+      }
+    });
+  });
+}
+
+render();
+listenToOrders();
+listenToEighty6();
+</script>
+</body>
+</html>
